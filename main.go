@@ -107,12 +107,37 @@ type QueryInfo struct {
 }
 
 type Dns struct {
-	EntityID string `json:"entityID"`
-	Name     string `json:"name"`
-	Type     string `json:"type"`
-	Ttl      string `json:"ttl"`
-	Priority string `json:"priority"`
-	Value    string `json:"value"`
+	EntityID string     `json:"entityID"`
+	Name     string     `json:"name"`
+	Type     string     `json:"type"`
+	Ttl      flexString `json:"ttl"`
+	Priority flexString `json:"priority"`
+	Value    string     `json:"value"`
+}
+
+// flexString decodes a JSON string or number. The DonDominio API returns the ttl and the priority of some records
+// as numbers (600) and of others as strings ("-"), and a string field made the whole dnslist response fail.
+type flexString string
+
+func (f *flexString) UnmarshalJSON(data []byte) error {
+	if string(data) == "null" {
+		*f = ""
+		return nil
+	}
+	if len(data) > 0 && data[0] == '"' {
+		var s string
+		if err := json.Unmarshal(data, &s); err != nil {
+			return err
+		}
+		*f = flexString(s)
+		return nil
+	}
+	var n json.Number
+	if err := json.Unmarshal(data, &n); err != nil {
+		return err
+	}
+	*f = flexString(n.String())
+	return nil
 }
 
 type ddServiceStatusParams struct {
