@@ -256,7 +256,7 @@ func (s *ddDNSProviderSolver) CleanUp(ch *v1alpha1.ChallengeRequest) error {
 	}
 	domain := getDomain(ch.ResolvedFQDN)
 	target := ch.Key
-	return removeTXTRecord(ddClient, domain, target)
+	return removeTXTRecord(ddClient, domain, ch.ResolvedFQDN, target)
 }
 
 // Initialize will be called when the webhook first starts.
@@ -328,21 +328,43 @@ func addTXTRecord(ddClient *Client, domain, subDomain, target string) error {
 	return err
 }
 
-func removeTXTRecord(ddClient *Client, domain, target string) error {
-	record, err := findRecords(ddClient, domain, target)
+// removeTXTRecord deletes only the TXT records whose name is fqdn and whose value is target. The dnslist call returns
+// every record of the zone (the API ignores filterValue without filterType), so the records are always checked here
+// and nothing is deleted when none matches.
+func removeTXTRecord(ddClient *Client, domain, fqdn, target string) error {
+	list, err := findRecords(ddClient, domain, target)
 	if err != nil {
 		return err
 	}
+	if list == nil {
+		return nil
+	}
 
-	if record != nil && record.ResponseData.Dns != nil && len(record.ResponseData.Dns) > 0 {
-		dns := record.ResponseData.Dns[0]
-		err = deleteRecord(ddClient, domain, dns.EntityID)
-		if err != nil {
+	for _, dns := range matchingTXTRecords(list.ResponseData.Dns, fqdn, target) {
+		if err := deleteRecord(ddClient, domain, dns.EntityID); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+// matchingTXTRecords returns the TXT records named fqdn with the value target, ignoring case in the name and the
+// quotes that the API may add around the value.
+func matchingTXTRecords(records []Dns, fqdn, target string) []Dns {
+	name := strings.ToLower(util.UnFqdn(fqdn))
+	value := strings.Trim(target, `"`)
+	var matches []Dns
+	for _, r := range records {
+		if r.EntityID == "" || !strings.EqualFold(r.Type, "TXT") {
+			continue
+		}
+		if strings.ToLower(util.UnFqdn(r.Name)) != name || strings.Trim(r.Value, `"`) != value {
+			continue
+		}
+		matches = append(matches, r)
+	}
+	return matches
 }
 
 func validateService(ddClient *Client, domain string) error {

@@ -1,5 +1,5 @@
 IMAGE_NAME := "cert-manager-webhook-dd"
-IMAGE_TAG := "1.0.8"
+IMAGE_TAG := "1.0.9"
 
 .PHONY: rendered-manifest.yaml test build
 
